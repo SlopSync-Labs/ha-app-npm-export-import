@@ -3,6 +3,15 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
+## [0.3.2] - 2026-06-10
+
+### Fixed
+
+- Port configuration now reads from config.json instead of hardcoded value,
+  ensuring gunicorn binds to the correct ingress port (8101 for dev)
+
+---
+
 ## [0.3.1] - 2026-06-09
 
 ### Added
