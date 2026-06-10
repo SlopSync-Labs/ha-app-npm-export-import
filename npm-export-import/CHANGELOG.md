@@ -3,6 +3,15 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
+## [0.3.0] - 2026-06-09
+
+### Changed
+
+- Version synced to 0.3.0 across all channels to align with final home-assistant-apps release
+- NPM Export Import now maintained exclusively in this dedicated repository
+
+---
+
 ## [0.2.12] - 2026-06-09
 
 ### Added
