@@ -1,40 +1,120 @@
-# NPM Export Import (beta) 🚀
-
+<!-- markdownlint-disable MD041 -->
 ![Version][version-shield]
 ![Project Stage][project-stage-shield]
+![Maintained][maintenance-shield]
 
-**Pre-release testing channel** — Get the latest features before stable release.
+[![Community Forum][forum-shield]][forum]
+[![Buy me a coffee][buymeacoffee-shield]][buymeacoffee]
 
-This is the **beta** variant of NPM Export Import, tracking the `beta` branch. It contains
-code that has passed initial testing and is ready for wider community evaluation.
+# NPM Export Import
 
-## ⚠️ Beta Channel Guidelines
+Back up and restore your [Nginx Proxy Manager](https://nginxproxymanager.com/) configuration via a built-in web UI. Export files are stored as JSON in Home Assistant's shared `/share/npm-export-import/` folder.
 
-✅ **Good for:**
+## What Gets Exported / Imported
 
-- Early adopters testing new features
-- Developers and testers providing feedback
-- Non-production Home Assistant instances
+| Entity | Exported | Imported | Notes |
+| --- | --- | --- | --- |
+| Proxy Hosts | Yes | Yes | Full config including custom Nginx |
+| Redirection Hosts | Yes | Yes | |
+| TCP/UDP Streams | Yes | Yes | |
+| Access Lists | Yes | Yes | HTTP Basic Auth + IP rules |
+| SSL Certificates (Let's Encrypt) | Yes | Yes | Restored as custom certs — see note below |
+| SSL Certificates (custom/uploaded) | No | No | Stored outside the shared volume |
+| Users | No | No | NPM API does not support creating users with known passwords |
 
-❌ **Not recommended for:**
+## Configuration
 
-- Critical production environments
-- Users requiring maximum stability
+NPM server connections are managed in the add-on web UI under the **Configuration** tab.
+Each server entry requires a name, URL, username, and password. Multiple servers can
+be added — use the **Source Server** and **Target Server** dropdowns on the
+Operations tab to select which NPM instance to export from or import into.
 
-## 🔄 How It Works
+## Usage
 
-Beta builds trigger automatically when code is pushed to the `beta` branch, enabling rapid
-iteration and community feedback before stable release.
+Open the add-on web UI from the Home Assistant sidebar or the add-on page.
 
-## 📢 Feedback & Reporting
+### Export
 
-Found a bug? Have suggestions? Open an issue on
-[GitHub](https://github.com/SlopSync-Labs/home-assistant-apps/issues).
+Click **Export Now**. The add-on authenticates to NPM, fetches all configuration, and writes a timestamped JSON file:
 
----
+```text
+/share/npm-export-import/npm-export-20260101T120000Z.json
+```
 
-For full documentation, see the
-[stable NPM Export Import add-on](https://github.com/SlopSync-Labs/home-assistant-apps/tree/main/npm-export-import).
+### Import
 
-[version-shield]: https://img.shields.io/badge/version-0.2.10-blue.svg
-[project-stage-shield]: https://img.shields.io/badge/channel-beta-orange.svg
+Previously exported files appear in the **Import** section of the UI. Click **Import** next to the file you want to restore.
+
+The import runs in this order to preserve references:
+
+1. SSL certificates (from exported cert files)
+2. Access lists
+3. Proxy hosts (with remapped access list and certificate IDs)
+4. Redirection hosts
+5. Streams
+
+**Important:** Import creates new entries — it does not check for duplicates. Run against a fresh NPM instance or one you have already cleared.
+
+## SSL Certificate Notes
+
+This add-on and the `nginx-proxy-manager` add-on both map HA's shared `/ssl/` volume. The NPM add-on stores Let's Encrypt certificate files (including private keys) at `/ssl/nginxproxymanager/live/npm-{id}/`, making them accessible to this add-on for backup.
+
+On import, Let's Encrypt certificates are restored as **custom (uploaded) certificates**. This means:
+
+- The cert and private key are fully restored and functional immediately
+- **Auto-renewal via Let's Encrypt will not work** for the restored cert entry
+- After migration, it is recommended to delete the restored cert entry and re-request a fresh Let's Encrypt certificate for each domain in the NPM UI
+
+Custom certificates (uploaded manually to NPM) are stored in the NPM add-on's private data volume, which is not accessible to other add-ons. These cannot be exported and must be re-uploaded manually after migration.
+
+## Server Config Backup
+
+NPM Export Import now supports exporting and importing your server connections (URLs,
+usernames, passwords) for easy migration or backup.
+
+### Export Server Config
+
+1. Open the app and navigate to the **Configuration** tab
+2. Scroll to **Server Config Backup** → **Export**
+3. (Optional) Add a custom label to identify the backup (e.g., "home-lab", "before-migration")
+4. (Optional) Enter a password to encrypt the export with AES-256-GCM
+5. Click **Export Server Config** — a JSON file is generated and saved to `/share/npm-export-import/`
+6. Click the filename link to download the file
+
+**Security note:** Exporting without a password includes server credentials in plaintext JSON.
+Use encryption if the file will be stored or transmitted over untrusted channels.
+
+### Import Server Config
+
+1. Go to **Configuration** → **Server Config Backup** → **Import**
+2. Select a previously exported file from the dropdown (or upload one — see below)
+3. (Optional) Enter the password if the file is encrypted
+4. Choose import mode:
+   - **Merge** (default) — adds new servers; skips any whose name already exists
+   - **Replace all** — deletes all current servers and imports the file's list
+5. Click **Import Server Config**
+6. Confirm the count of imported/skipped servers
+
+### Upload Server Config File
+
+If you have a server config file on your local computer (e.g., from a previous export):
+
+1. Go to **Configuration** → **Server Config Backup** → **Upload**
+2. Click **Choose File** and select a `.json` file
+3. Click **Upload File**
+4. The file appears in the Import file selector immediately
+
+## File Location
+
+Export files land in `/share/npm-export-import/` on the HA host, accessible via:
+
+- **Samba add-on** — browse to the `share` folder
+- **SSH add-on** — `/share/npm-export-import/`
+
+[version-shield]: https://img.shields.io/badge/version-0.2.12-blue.svg
+[project-stage-shield]: https://img.shields.io/badge/project%20stage-experimental-yellow.svg
+[maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
+[forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg
+[forum]: https://community.home-assistant.io
+[buymeacoffee-shield]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg
+[buymeacoffee]: https://www.buymeacoffee.com/slopsynclabs

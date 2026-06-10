@@ -67,6 +67,43 @@ On import, Let's Encrypt certificates are restored as **custom (uploaded) certif
 
 Custom certificates (uploaded manually to NPM) are stored in the NPM add-on's private data volume, which is not accessible to other add-ons. These cannot be exported and must be re-uploaded manually after migration.
 
+## Server Config Backup
+
+NPM Export Import now supports exporting and importing your server connections (URLs,
+usernames, passwords) for easy migration or backup.
+
+### Export Server Config
+
+1. Open the app and navigate to the **Configuration** tab
+2. Scroll to **Server Config Backup** → **Export**
+3. (Optional) Add a custom label to identify the backup (e.g., "home-lab", "before-migration")
+4. (Optional) Enter a password to encrypt the export with AES-256-GCM
+5. Click **Export Server Config** — a JSON file is generated and saved to `/share/npm-export-import/`
+6. Click the filename link to download the file
+
+**Security note:** Exporting without a password includes server credentials in plaintext JSON.
+Use encryption if the file will be stored or transmitted over untrusted channels.
+
+### Import Server Config
+
+1. Go to **Configuration** → **Server Config Backup** → **Import**
+2. Select a previously exported file from the dropdown (or upload one — see below)
+3. (Optional) Enter the password if the file is encrypted
+4. Choose import mode:
+   - **Merge** (default) — adds new servers; skips any whose name already exists
+   - **Replace all** — deletes all current servers and imports the file's list
+5. Click **Import Server Config**
+6. Confirm the count of imported/skipped servers
+
+### Upload Server Config File
+
+If you have a server config file on your local computer (e.g., from a previous export):
+
+1. Go to **Configuration** → **Server Config Backup** → **Upload**
+2. Click **Choose File** and select a `.json` file
+3. Click **Upload File**
+4. The file appears in the Import file selector immediately
+
 ## File Location
 
 Export files land in `/share/npm-export-import/` on the HA host, accessible via:
@@ -74,7 +111,7 @@ Export files land in `/share/npm-export-import/` on the HA host, accessible via:
 - **Samba add-on** — browse to the `share` folder
 - **SSH add-on** — `/share/npm-export-import/`
 
-[version-shield]: https://img.shields.io/badge/version-0.2.10-blue.svg
+[version-shield]: https://img.shields.io/badge/version-0.2.12-blue.svg
 [project-stage-shield]: https://img.shields.io/badge/project%20stage-experimental-yellow.svg
 [maintenance-shield]: https://img.shields.io/maintenance/yes/2026.svg
 [forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg

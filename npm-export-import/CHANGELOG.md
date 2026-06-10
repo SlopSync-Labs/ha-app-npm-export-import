@@ -3,6 +3,26 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
+## [0.2.12] - 2026-06-09
+
+### Added
+
+- **Server Config Backup** — export and import NPM server connections (URL, credentials)
+  as a JSON file stored in `/share/npm-export-import/`
+- Optional AES-256-GCM password encryption for server config exports; unencrypted
+  exports display a plaintext warning
+- Custom label field on export — appended to filename alongside date
+  (e.g. `servers-config-export-home-lab-2026-06-09.json`)
+- Merge or Replace import modes — merge skips servers whose name already exists;
+  replace overwrites the full server list
+- File upload — upload a previously downloaded server config file directly from
+  your browser without needing filesystem access
+- Download button in Server Config Backup Import — download selected backup files
+- Delete button in Server Config Backup Import — delete unwanted backup files with
+  arm/confirm pattern for safety
+
+---
+
 ## [0.2.10] - 2026-06-08
 
 ### Added
