@@ -19,7 +19,14 @@ OPTIONS_PATH = "/data/options.json"
 SERVERS_PATH = "/data/servers.json"
 EXPORT_DIR = "/share/npm-export-import"
 LE_CERT_BASE = "/ssl/nginxproxymanager/live"
-INGRESS_PORT = 8099
+def _ingress_port():
+    try:
+        with open("/app/config.json") as f:
+            return json.load(f).get("ingress_port", 8099)
+    except Exception:
+        return 8099
+
+INGRESS_PORT = _ingress_port()
 SERVERS_EXPORT_PREFIX = "servers-config-export"
 
 ENTITY_ENDPOINTS = {

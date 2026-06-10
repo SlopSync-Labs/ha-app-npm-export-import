@@ -19,7 +19,14 @@ OPTIONS_PATH = "/data/options.json"
 SERVERS_PATH = "/data/servers.json"
 EXPORT_DIR = "/share/npm-export-import"
 LE_CERT_BASE = "/ssl/nginxproxymanager/live"
-INGRESS_PORT = 8099
+def _ingress_port():
+    try:
+        with open("/app/config.json") as f:
+            return json.load(f).get("ingress_port", 8099)
+    except Exception:
+        return 8099
+
+INGRESS_PORT = _ingress_port()
 SERVERS_EXPORT_PREFIX = "servers-config-export"
 
 ENTITY_ENDPOINTS = {
@@ -599,7 +606,7 @@ _HTML = r"""<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NPM Export Import</title>
+  <title>__APP_NAME__</title>
   <style>
     :root {
       --bg:               #f0f2f5;
@@ -768,7 +775,7 @@ _HTML = r"""<!DOCTYPE html>
   <div class="page-header">
     <div class="page-title">
       <img src="__ICON_URI__" class="app-icon" alt="">
-      <h1>NPM Export Import</h1>
+      <h1>__APP_NAME__</h1>
     </div>
     <button class="btn-theme" id="btn-theme" onclick="toggleTheme()" title="Toggle dark mode"></button>
   </div>
@@ -1611,9 +1618,22 @@ def _app_version():
         return ""
 
 
+def _app_name():
+    try:
+        with open("/app/config.json") as f:
+            return json.load(f).get("name", "NPM Export Import")
+    except Exception:
+        return "NPM Export Import"
+
+
 @app.route("/")
 def index():
-    return _HTML.replace("__ICON_URI__", _icon_data_uri()).replace("__VERSION__", _app_version())
+    return (
+        _HTML
+        .replace("__ICON_URI__", _icon_data_uri())
+        .replace("__VERSION__", _app_version())
+        .replace("__APP_NAME__", _app_name())
+    )
 
 
 @app.route("/api/status")
@@ -1996,7 +2016,7 @@ def api_files_upload():
 def main():
     _migrate_legacy_config()
     _log(f"[server] Starting on port {INGRESS_PORT}")
-    app.run(host="0.0.0.0", port=INGRESS_PORT, threaded=True)
+    _log("[server] Running under gunicorn")
 
 
 if __name__ == "__main__":

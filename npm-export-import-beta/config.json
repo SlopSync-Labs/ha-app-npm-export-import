@@ -10,7 +10,7 @@
   "init": false,
   "stage": "experimental",
   "ingress": true,
-  "ingress_port": 8099,
+  "ingress_port": 8100,
   "panel_icon": "mdi:swap-vertical-bold",
   "map": ["share:rw", "ssl:rw"],
   "options": {},

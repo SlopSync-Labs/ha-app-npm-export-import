@@ -2,4 +2,12 @@
 set -euo pipefail
 
 echo "[npm-export-import] Starting..."
-exec python3 /app/npm_export_import.py
+exec gunicorn \
+  --bind 0.0.0.0:8099 \
+  --workers 2 \
+  --threads 4 \
+  --worker-class gthread \
+  --timeout 300 \
+  --access-logfile - \
+  --error-logfile - \
+  npm_export_import:app

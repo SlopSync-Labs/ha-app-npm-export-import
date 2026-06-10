@@ -3,6 +3,21 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
+## [0.3.1] - 2026-06-09
+
+### Added
+
+- **Dynamic app name** — page title and heading now read from `config.json` "name" field,
+  allowing beta and dev variants to display their channel designation (e.g. "NPM Export Import (dev)")
+
+### Fixed
+
+- **Graceful shutdown** — switched from Flask dev server to gunicorn (production WSGI)
+  to properly handle SIGTERM signals. App now shows "Stopped" instead of "Error"
+  when Home Assistant stops it
+
+---
+
 ## [0.3.0] - 2026-06-09
 
 ### Changed

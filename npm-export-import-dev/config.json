@@ -1,6 +1,6 @@
 {
   "name": "NPM Export Import (dev)",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "slug": "npm-export-import-dev",
   "description": "Export and import Nginx Proxy Manager configuration (proxy hosts, redirections, streams, access lists, and SSL certificates) via a web UI.",
   "url": "https://github.com/SlopSync-Labs/ha-app-npm-export-import",
@@ -10,7 +10,7 @@
   "init": false,
   "stage": "experimental",
   "ingress": true,
-  "ingress_port": 8099,
+  "ingress_port": 8101,
   "panel_icon": "mdi:swap-vertical-bold",
   "map": ["share:rw", "ssl:rw"],
   "options": {},
