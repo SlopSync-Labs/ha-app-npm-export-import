@@ -3,6 +3,17 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
+## [Unreleased]
+
+### Removed
+
+- **Certificate export/import** — SSL certificates are no longer exported or imported. NPM has no
+  API endpoint to retrieve cert file contents, making export unreliable in containerized environments.
+  On import, users can enable "Request SSL" to obtain new Let's Encrypt certificates for proxy hosts,
+  or configure SSL manually in NPM after import. Custom certificates must be re-uploaded manually.
+
+---
+
 ## [0.3.2] - 2026-06-10
 
 ### Fixed

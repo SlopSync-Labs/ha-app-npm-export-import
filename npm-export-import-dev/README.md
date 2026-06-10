@@ -14,12 +14,11 @@ Back up and restore your [Nginx Proxy Manager](https://nginxproxymanager.com/) c
 
 | Entity | Exported | Imported | Notes |
 | --- | --- | --- | --- |
-| Proxy Hosts | Yes | Yes | Full config including custom Nginx |
+| Proxy Hosts | Yes | Yes | Full config including custom Nginx; certs require manual setup |
 | Redirection Hosts | Yes | Yes | |
 | TCP/UDP Streams | Yes | Yes | |
 | Access Lists | Yes | Yes | HTTP Basic Auth + IP rules |
-| SSL Certificates (Let's Encrypt) | Yes | Yes | Restored as custom certs — see note below |
-| SSL Certificates (custom/uploaded) | No | No | Stored outside the shared volume |
+| SSL Certificates | No | No | Configure manually in NPM; use "Request SSL" checkbox to obtain new LE certs |
 | Users | No | No | NPM API does not support creating users with known passwords |
 
 ## Configuration
@@ -54,18 +53,6 @@ The import runs in this order to preserve references:
 5. Streams
 
 **Important:** Import creates new entries — it does not check for duplicates. Run against a fresh NPM instance or one you have already cleared.
-
-## SSL Certificate Notes
-
-This add-on and the `nginx-proxy-manager` add-on both map HA's shared `/ssl/` volume. The NPM add-on stores Let's Encrypt certificate files (including private keys) at `/ssl/nginxproxymanager/live/npm-{id}/`, making them accessible to this add-on for backup.
-
-On import, Let's Encrypt certificates are restored as **custom (uploaded) certificates**. This means:
-
-- The cert and private key are fully restored and functional immediately
-- **Auto-renewal via Let's Encrypt will not work** for the restored cert entry
-- After migration, it is recommended to delete the restored cert entry and re-request a fresh Let's Encrypt certificate for each domain in the NPM UI
-
-Custom certificates (uploaded manually to NPM) are stored in the NPM add-on's private data volume, which is not accessible to other add-ons. These cannot be exported and must be re-uploaded manually after migration.
 
 ## Server Config Backup
 

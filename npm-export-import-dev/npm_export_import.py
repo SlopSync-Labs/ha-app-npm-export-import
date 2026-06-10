@@ -18,7 +18,6 @@ from flask import request as flask_request
 OPTIONS_PATH = "/data/options.json"
 SERVERS_PATH = "/data/servers.json"
 EXPORT_DIR = "/share/npm-export-import"
-LE_CERT_BASE = "/ssl/nginxproxymanager/live"
 def _ingress_port():
     try:
         with open("/app/config.json") as f:
@@ -34,7 +33,6 @@ ENTITY_ENDPOINTS = {
     "redirection_hosts": "/api/nginx/redirection-hosts",
     "streams": "/api/nginx/streams",
     "access_lists": "/api/nginx/access-lists",
-    "certificates": "/api/nginx/certificates",
 }
 
 # Fields assigned by NPM on creation — must be stripped before POSTing
@@ -230,20 +228,6 @@ def _migrate_legacy_config():
 
 
 
-def _read_cert_files(cert_id):
-    """Read LE cert files from the shared ssl volume. Returns dict or None."""
-    cert_dir = os.path.join(LE_CERT_BASE, f"npm-{cert_id}")
-    fullchain = os.path.join(cert_dir, "fullchain.pem")
-    privkey = os.path.join(cert_dir, "privkey.pem")
-    if not (os.path.isfile(fullchain) and os.path.isfile(privkey)):
-        return None
-    with open(fullchain, "rb") as f:
-        fc_b64 = base64.b64encode(f.read()).decode()
-    with open(privkey, "rb") as f:
-        pk_b64 = base64.b64encode(f.read()).decode()
-    return {"fullchain_pem": fc_b64, "privkey_pem": pk_b64}
-
-
 ENTITY_EXPAND = {
     "access_lists": "items,clients",
 }
@@ -257,20 +241,6 @@ def fetch_all(base_url, headers):
         resp = requests.get(f"{base}{path}", headers=headers, params=params, timeout=15)
         resp.raise_for_status()
         data[key] = resp.json()
-
-    # Augment certificate records with actual cert file contents where accessible
-    for cert in data["certificates"]:
-        cert_id = cert["id"]
-        cert_files = _read_cert_files(cert_id)
-        if cert_files:
-            cert["cert_files"] = cert_files
-        else:
-            provider = cert.get("provider", "unknown")
-            _log(
-                f"[export] WARNING: cert id={cert_id} ({provider}) — cert files not "
-                f"found at {LE_CERT_BASE}/npm-{cert_id}/. "
-                f"Custom certs stored in /data/custom_ssl/ cannot be exported."
-            )
 
     return data
 
@@ -292,47 +262,6 @@ def export_all(cfg):
 
 def _strip(obj):
     return {k: v for k, v in obj.items() if k not in STRIP_FIELDS}
-
-
-def _import_certificates(base, headers, certs):
-    """Create custom cert records and upload cert+key files. Returns old->new ID map."""
-    cert_id_map = {}
-    for cert in certs:
-        old_id = cert["id"]
-        cert_files = cert.get("cert_files")
-        if not cert_files:
-            _log(
-                f"[import] SKIP cert id={old_id} ({cert.get('provider')}) — "
-                f"no cert_files in export (custom cert or missing from backup)"
-            )
-            continue
-
-        nice_name = cert.get("nice_name") or f"imported-npm-{old_id}"
-        create_resp = requests.post(
-            f"{base}/api/nginx/certificates",
-            headers=headers,
-            json={"provider": "other", "nice_name": nice_name},
-            timeout=15,
-        )
-        create_resp.raise_for_status()
-        new_id = create_resp.json()["id"]
-
-        fullchain = base64.b64decode(cert_files["fullchain_pem"])
-        privkey = base64.b64decode(cert_files["privkey_pem"])
-        upload_resp = requests.post(
-            f"{base}/api/nginx/certificates/{new_id}/upload",
-            headers={"Authorization": headers["Authorization"]},
-            files={
-                "certificate": ("fullchain.pem", fullchain, "application/x-pem-file"),
-                "certificate_key": ("privkey.pem", privkey, "application/x-pem-file"),
-            },
-            timeout=30,
-        )
-        upload_resp.raise_for_status()
-        cert_id_map[old_id] = new_id
-        _log(f"[import] certificate {old_id} -> {new_id} ({nice_name})")
-
-    return cert_id_map
 
 
 def _import_access_lists(base, headers, access_lists):
@@ -428,18 +357,19 @@ def import_all(cfg, import_file, request_ssl=False):
     headers = authenticate(cfg)
     json_headers = {**headers, "Content-Type": "application/json"}
 
-    cert_id_map = _import_certificates(base, headers, data.get("certificates", []))
+    # Build cert_id -> provider map from exported certificates (used to decide if LE renewal is possible)
+    cert_provider_map = {c["id"]: c.get("provider") for c in data.get("certificates", [])}
+
     al_id_map = _import_access_lists(base, json_headers, data.get("access_lists", []))
 
-    # Build domain -> (id, cert_id) map of proxy hosts already on the target so we can
-    # PUT (update) rather than POST (duplicate) when a host already exists,
-    # and so we can preserve an existing cert rather than requesting a duplicate.
+    # Build domain -> id map of proxy hosts already on the target so we can
+    # PUT (update) rather than POST (duplicate) when a host already exists.
     existing_ph_resp = requests.get(f"{base}/api/nginx/proxy-hosts", headers=json_headers, timeout=15)
     existing_ph_by_domain = {}
     if existing_ph_resp.ok:
         for existing in existing_ph_resp.json():
             for domain in existing.get("domain_names", []):
-                existing_ph_by_domain[domain] = (existing["id"], existing.get("certificate_id", 0))
+                existing_ph_by_domain[domain] = existing["id"]
     else:
         _log(f"[import] WARNING: could not fetch existing proxy hosts ({existing_ph_resp.status_code}) — duplicate check skipped")
 
@@ -456,33 +386,31 @@ def import_all(cfg, import_file, request_ssl=False):
         mapped_cert_id = cert_id_map.get(old_cert_id, 0) if old_cert_id else 0
 
         domains = ph.get("domain_names", [])
-        existing_entry = next(
+        existing_id = next(
             (existing_ph_by_domain[d] for d in domains if d in existing_ph_by_domain), None
         )
-        existing_id = existing_entry[0] if existing_entry else None
-        target_cert_id = existing_entry[1] if existing_entry else 0
 
         if old_cert_id:
-            if mapped_cert_id:
-                payload["certificate_id"] = mapped_cert_id
-            elif target_cert_id:
-                # Target already has a working cert — keep it, restore SSL settings from source
-                payload["certificate_id"] = target_cert_id
-                payload["ssl_forced"] = orig_payload.get("ssl_forced", False)
+            cert_provider = cert_provider_map.get(old_cert_id)
+            payload["certificate_id"] = 0  # Always zero the cert ID since we can't remap it
+
+            if cert_provider == "letsencrypt" and request_ssl:
+                needs_ssl_request = True
+            elif cert_provider == "letsencrypt":
                 _log(
-                    f"[import] proxy_host {ph['id']} ({domains}) — keeping existing cert {target_cert_id} on target"
+                    f"[import] WARNING: proxy_host {ph['id']} ({domains}) "
+                    f"had Let's Encrypt cert (id={old_cert_id}) — enable 'Request SSL' to obtain a new cert or configure one manually in NPM"
+                )
+            elif cert_provider == "other":
+                _log(
+                    f"[import] WARNING: proxy_host {ph['id']} ({domains}) "
+                    f"had custom cert (id={old_cert_id}) — custom certs must be re-uploaded manually in NPM"
                 )
             else:
-                # No cert available from export and none on target
-                payload["certificate_id"] = 0
-                payload["ssl_forced"] = False
-                if request_ssl:
-                    needs_ssl_request = True
-                else:
-                    _log(
-                        f"[import] WARNING: proxy_host {ph['id']} ({domains}) "
-                        f"had cert id={old_cert_id} which was not restored — SSL disabled"
-                    )
+                _log(
+                    f"[import] WARNING: proxy_host {ph['id']} ({domains}) "
+                    f"had cert (id={old_cert_id}, provider={cert_provider}) — configure a new cert in NPM"
+                )
 
         if existing_id:
             resp = requests.put(
@@ -547,13 +475,23 @@ def import_all(cfg, import_file, request_ssl=False):
         payload = _strip(rh)
         old_cert_id = payload.get("certificate_id", 0)
         if old_cert_id:
-            new_cert_id = cert_id_map.get(old_cert_id, 0)
-            payload["certificate_id"] = new_cert_id
-            if not new_cert_id:
-                payload["ssl_forced"] = False
+            cert_provider = cert_provider_map.get(old_cert_id)
+            payload["certificate_id"] = 0
+
+            if cert_provider == "letsencrypt":
                 _log(
                     f"[import] WARNING: redirection_host {rh['id']} ({rh.get('domain_names')}) "
-                    f"had cert id={old_cert_id} which was not restored — SSL disabled"
+                    f"had Let's Encrypt cert (id={old_cert_id}) — configure a new cert in NPM"
+                )
+            elif cert_provider == "other":
+                _log(
+                    f"[import] WARNING: redirection_host {rh['id']} ({rh.get('domain_names')}) "
+                    f"had custom cert (id={old_cert_id}) — custom certs must be re-uploaded manually in NPM"
+                )
+            else:
+                _log(
+                    f"[import] WARNING: redirection_host {rh['id']} ({rh.get('domain_names')}) "
+                    f"had cert (id={old_cert_id}, provider={cert_provider}) — configure a new cert in NPM"
                 )
         resp = requests.post(
             f"{base}/api/nginx/redirection-hosts",
