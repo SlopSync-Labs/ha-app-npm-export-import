@@ -33,6 +33,7 @@ ENTITY_ENDPOINTS = {
     "redirection_hosts": "/api/nginx/redirection-hosts",
     "streams": "/api/nginx/streams",
     "access_lists": "/api/nginx/access-lists",
+    "certificates": "/api/nginx/certificates",
 }
 
 # Fields assigned by NPM on creation — must be stripped before POSTing
