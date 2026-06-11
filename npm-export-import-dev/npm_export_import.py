@@ -902,6 +902,8 @@ _HTML = r"""<!DOCTYPE html>
     let _pendingOp = null;
     let _challengeToken = null;
     let _currentOpType = null;
+    let _renderedLogCount = 0;  // Track how many log lines have been rendered
+    let _logAutoScroll = true;  // Track whether auto-scroll is enabled
 
     const _TRASH_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5M11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1zm1.958 1-.846 10.58a1 1 0 0 1-.997.92h-6.23a1 1 0 0 1-.997-.92L3.042 3.5zm-7.487 1a.5.5 0 0 1 .528.47l.5 8.5a.5.5 0 0 1-.998.06L5 5.03a.5.5 0 0 1 .47-.53Zm5.058 0a.5.5 0 0 1 .47.53l-.5 8.5a.5.5 0 1 1-.998-.06l.5-8.5a.5.5 0 0 1 .528-.47M8 4.5a.5.5 0 0 1 .5.5v8.5a.5.5 0 0 1-1 0V5a.5.5 0 0 1 .5-.5"/></svg>';
 
@@ -1187,9 +1189,29 @@ _HTML = r"""<!DOCTYPE html>
       try {
         const d = await (await fetch(base + '/api/logs')).json();
         const el = document.getElementById('log');
-        const atBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 10;
-        el.textContent = d.lines.join('\n');
-        if (atBottom) el.scrollTop = el.scrollHeight;
+
+        // Handle log reset: if fewer lines than before, the buffer was cleared
+        if (d.lines.length < _renderedLogCount) {
+          el.textContent = d.lines.join('\n');
+          _renderedLogCount = d.lines.length;
+        } else {
+          // Append only new lines
+          const newLines = d.lines.slice(_renderedLogCount);
+          if (newLines.length > 0) {
+            const newText = newLines.join('\n');
+            if (el.textContent) {
+              el.textContent += '\n' + newText;
+            } else {
+              el.textContent = newText;
+            }
+            _renderedLogCount = d.lines.length;
+          }
+        }
+
+        // Auto-scroll only if user hasn't scrolled away
+        if (_logAutoScroll) {
+          el.scrollTop = el.scrollHeight;
+        }
       } catch (_) {}
     }
 
@@ -1534,6 +1556,13 @@ _HTML = r"""<!DOCTYPE html>
     loadServers(); loadStatus(); loadFiles(); loadLogs();
     setInterval(() => Promise.all([loadStatus(), loadLogs()]), 2000);
     setInterval(loadFiles, 8000);
+
+    // Handle user scroll in log — disable auto-scroll if user scrolls up, re-enable if they scroll to bottom
+    const logEl = document.getElementById('log');
+    logEl.addEventListener('scroll', () => {
+      const isAtBottom = logEl.scrollHeight - logEl.scrollTop <= logEl.clientHeight + 30;
+      _logAutoScroll = isAtBottom;
+    });
   </script>
 </body>
 </html>
