@@ -363,18 +363,48 @@ def import_all(cfg, import_file, request_ssl=False):
 
     al_id_map = _import_access_lists(base, json_headers, data.get("access_lists", []))
 
-    # Build domain -> id map of proxy hosts already on the target so we can
-    # PUT (update) rather than POST (duplicate) when a host already exists.
+    # Build domain -> (id, certificate_id) tuple map of proxy hosts already on the target
+    # so we can PUT (update) rather than POST (duplicate) when a host already exists,
+    # and preserve existing certs.
     existing_ph_resp = requests.get(f"{base}/api/nginx/proxy-hosts", headers=json_headers, timeout=15)
     existing_ph_by_domain = {}
     if existing_ph_resp.ok:
         for existing in existing_ph_resp.json():
             for domain in existing.get("domain_names", []):
-                existing_ph_by_domain[domain] = existing["id"]
+                existing_ph_by_domain[domain] = (existing["id"], existing.get("certificate_id") or 0)
     else:
         _log(f"[import] WARNING: could not fetch existing proxy hosts ({existing_ph_resp.status_code}) — duplicate check skipped")
 
-    ssl_pending = []  # list of (target_host_id, orig_stripped_payload) for post-import LE cert requests
+    def _request_and_apply_cert(target_id, domains, orig_payload):
+        _log(f"[import] Requesting LE cert for {domains} (may take up to 60s)...")
+        try:
+            cert_resp = requests.post(
+                f"{base}/api/nginx/certificates",
+                headers=json_headers,
+                json={"provider": "letsencrypt", "domain_names": domains, "meta": {}},
+                timeout=120,
+            )
+            if cert_resp.ok:
+                new_cert_id = cert_resp.json()["id"]
+                update_payload = {**orig_payload, "certificate_id": new_cert_id}
+                update_resp = requests.put(
+                    f"{base}/api/nginx/proxy-hosts/{target_id}",
+                    headers=json_headers,
+                    json=update_payload,
+                    timeout=15,
+                )
+                if update_resp.ok:
+                    _log(f"[import] LE cert {new_cert_id} applied to proxy_host {target_id} ({domains})")
+                else:
+                    _log(f"[import] WARNING: cert obtained (id={new_cert_id}) but failed to apply: {update_resp.text}")
+            else:
+                try:
+                    detail = cert_resp.json()
+                except Exception:
+                    detail = cert_resp.text
+                _log(f"[import] WARNING: LE cert request failed for {domains}: {detail}")
+        except Exception as exc:
+            _log(f"[import] WARNING: LE cert request for {domains} failed: {exc}")
 
     for ph in data.get("proxy_hosts", []):
         orig_payload = _strip(ph)
@@ -383,33 +413,40 @@ def import_all(cfg, import_file, request_ssl=False):
         if old_al_id:
             payload["access_list_id"] = al_id_map.get(old_al_id, 0)
         old_cert_id = payload.get("certificate_id", 0)
-        needs_ssl_request = False
 
         domains = ph.get("domain_names", [])
-        existing_id = next(
+        existing_entry = next(
             (existing_ph_by_domain[d] for d in domains if d in existing_ph_by_domain), None
         )
+        existing_id = existing_entry[0] if existing_entry else None
+        existing_cert_id = existing_entry[1] if existing_entry else 0
 
+        request_new_cert = False
         if old_cert_id:
             cert_provider = cert_provider_map.get(old_cert_id)
-            payload["certificate_id"] = 0  # Always zero the cert ID since we can't remap it
-
-            if cert_provider == "letsencrypt" and request_ssl:
-                needs_ssl_request = True
-            elif cert_provider == "letsencrypt":
-                _log(
-                    f"[import] WARNING: proxy_host {ph['id']} ({domains}) "
-                    f"had Let's Encrypt cert (id={old_cert_id}) — enable 'Request SSL' to obtain a new cert or configure one manually in NPM"
-                )
+            if cert_provider == "letsencrypt":
+                if existing_cert_id:
+                    payload["certificate_id"] = existing_cert_id
+                elif request_ssl:
+                    payload["certificate_id"] = 0
+                    request_new_cert = True
+                else:
+                    payload["certificate_id"] = 0
+                    _log(
+                        f"[import] WARNING: proxy_host {ph['id']} ({domains}) "
+                        f"had Let's Encrypt cert — enable 'Request SSL' to obtain a new cert"
+                    )
             elif cert_provider == "other":
+                payload["certificate_id"] = 0
                 _log(
                     f"[import] WARNING: proxy_host {ph['id']} ({domains}) "
-                    f"had custom cert (id={old_cert_id}) — custom certs must be re-uploaded manually in NPM"
+                    f"had custom cert — must be re-uploaded manually in NPM"
                 )
             else:
+                payload["certificate_id"] = 0
                 _log(
                     f"[import] WARNING: proxy_host {ph['id']} ({domains}) "
-                    f"had cert (id={old_cert_id}, provider={cert_provider}) — configure a new cert in NPM"
+                    f"had cert (provider={cert_provider}) — configure manually in NPM"
                 )
 
         if existing_id:
@@ -421,8 +458,8 @@ def import_all(cfg, import_file, request_ssl=False):
             )
             if _check(resp, f"proxy_host {ph['id']} {domains} update"):
                 _log(f"[import] proxy_host {ph['id']} -> {existing_id} ({domains}) — updated existing")
-                if needs_ssl_request:
-                    ssl_pending.append((existing_id, orig_payload))
+                if request_new_cert:
+                    _request_and_apply_cert(existing_id, domains, orig_payload)
         else:
             resp = requests.post(
                 f"{base}/api/nginx/proxy-hosts",
@@ -433,43 +470,8 @@ def import_all(cfg, import_file, request_ssl=False):
             if _check(resp, f"proxy_host {ph['id']} {domains}"):
                 new_ph_id = resp.json()["id"]
                 _log(f"[import] proxy_host {ph['id']} -> {new_ph_id} ({domains})")
-                if needs_ssl_request:
-                    ssl_pending.append((new_ph_id, orig_payload))
-
-    if ssl_pending:
-        _log(f"[import] Requesting Let's Encrypt certificates for {len(ssl_pending)} host(s)...")
-        for target_id, orig_payload in ssl_pending:
-            domains = orig_payload.get("domain_names", [])
-            _log(f"[import] Requesting LE cert for {domains} (this may take up to 60s)...")
-            cert_resp = requests.post(
-                f"{base}/api/nginx/certificates",
-                headers=json_headers,
-                json={
-                    "provider": "letsencrypt",
-                    "domain_names": domains,
-                    "meta": {},
-                },
-                timeout=120,
-            )
-            if not cert_resp.ok:
-                try:
-                    detail = cert_resp.json()
-                except Exception:
-                    detail = cert_resp.text
-                _log(f"[import] WARNING: LE cert request failed for {domains}: {detail}")
-                continue
-            new_cert_id = cert_resp.json()["id"]
-            update_payload = {**orig_payload, "certificate_id": new_cert_id}
-            update_resp = requests.put(
-                f"{base}/api/nginx/proxy-hosts/{target_id}",
-                headers=json_headers,
-                json=update_payload,
-                timeout=15,
-            )
-            if update_resp.ok:
-                _log(f"[import] LE cert {new_cert_id} applied to proxy_host {target_id} ({domains})")
-            else:
-                _log(f"[import] WARNING: cert obtained (id={new_cert_id}) but failed to update proxy_host {target_id}: {update_resp.text}")
+                if request_new_cert:
+                    _request_and_apply_cert(new_ph_id, domains, orig_payload)
 
     for rh in data.get("redirection_hosts", []):
         payload = _strip(rh)

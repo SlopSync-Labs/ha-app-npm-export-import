@@ -3,6 +3,19 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
+## [0.3.7] - 2026-06-11
+
+### Fixed
+
+- Import now preserves existing certificates on target proxy hosts during config updates:
+  - Existing hosts with a cert on target keep the cert (no zeroing during PUT)
+  - "Request SSL" now only requests new LE certs for hosts without one on target
+  - Removed two-pass ssl_pending approach; cert requests now happen inline after each host is created/updated
+  - Prevents crashes from zeroing the cert on the proxy that routes to the target NPM admin UI itself
+  - If one cert request fails, only that host is affected; import continues for all others
+
+---
+
 ## [0.3.6] - 2026-06-10
 
 ### Fixed
