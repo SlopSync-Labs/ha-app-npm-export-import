@@ -383,7 +383,6 @@ def import_all(cfg, import_file, request_ssl=False):
             payload["access_list_id"] = al_id_map.get(old_al_id, 0)
         old_cert_id = payload.get("certificate_id", 0)
         needs_ssl_request = False
-        mapped_cert_id = cert_id_map.get(old_cert_id, 0) if old_cert_id else 0
 
         domains = ph.get("domain_names", [])
         existing_id = next(
