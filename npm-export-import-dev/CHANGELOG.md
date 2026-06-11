@@ -3,10 +3,16 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
-## [0.3.5] - 2026-06-10
+## [0.3.6] - 2026-06-10
 
 ### Fixed
 
+- "Request SSL" checkbox now works correctly:
+  - Re-added certificates endpoint to export; now fetches cert provider metadata only (not cert files)
+  - cert_provider_map now populated correctly
+  - needs_ssl_request becomes True when cert was Let's Encrypt and "Request SSL" is enabled
+  - LE cert requests now queued and processed correctly with domain_names from proxy host
+  - Provider-specific warnings now show correct provider (not `None`)
 - Log responses no longer return empty/blank results intermittently:
   - Reduced gunicorn workers from 2 to 1; each worker had its own `_log_lines` deque in memory
   - Frontend polling round-robined across workers, hitting empty deque ~50% of the time
