@@ -8,7 +8,7 @@ PORT=$(python3 -c "import json; print(json.load(open('/app/config.json')).get('i
 
 exec gunicorn \
   --bind 0.0.0.0:${PORT} \
-  --workers 2 \
+  --workers 1 \
   --threads 4 \
   --worker-class gthread \
   --timeout 300 \

@@ -3,10 +3,14 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
-## [0.3.4] - 2026-06-10
+## [0.3.5] - 2026-06-10
 
 ### Fixed
 
+- Log responses no longer return empty/blank results intermittently:
+  - Reduced gunicorn workers from 2 to 1; each worker had its own `_log_lines` deque in memory
+  - Frontend polling round-robined across workers, hitting empty deque ~50% of the time
+  - Single worker + 4 threads provides sufficient concurrency; all state is in-process memory anyway
 - Log display no longer flickers or constantly scrolls to bottom:
   - Changed from full `textContent` replacement to incremental line appending (eliminates DOM thrashing)
   - Auto-scroll now respects user intent: disabled when user scrolls up, re-enabled when scrolled to bottom
