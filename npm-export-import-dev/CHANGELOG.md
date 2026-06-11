@@ -3,6 +3,18 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
+## [0.3.4] - 2026-06-10
+
+### Fixed
+
+- Log display no longer flickers or constantly scrolls to bottom:
+  - Changed from full `textContent` replacement to incremental line appending (eliminates DOM thrashing)
+  - Auto-scroll now respects user intent: disabled when user scrolls up, re-enabled when scrolled to bottom
+  - Removed overly-sensitive 10px scroll threshold, replaced with 30px for more stable detection
+- Import no longer crashes with "name 'cert_id_map' is not defined" — removed leftover variable reference
+
+---
+
 ## [0.3.3] - 2026-06-10
 
 ### Fixed
