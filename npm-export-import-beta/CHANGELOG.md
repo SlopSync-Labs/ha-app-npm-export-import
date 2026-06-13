@@ -3,6 +3,78 @@
 
 All notable changes to the NPM Export Import add-on will be documented here.
 
+## [0.3.7] - 2026-06-11
+
+### Fixed
+
+- Import now preserves existing certificates on target proxy hosts during config updates:
+  - Existing hosts with a cert on target keep the cert (no zeroing during PUT)
+  - "Request SSL" now only requests new LE certs for hosts without one on target
+  - Removed two-pass ssl_pending approach; cert requests now happen inline after each host is created/updated
+  - Prevents crashes from zeroing the cert on the proxy that routes to the target NPM admin UI itself
+  - If one cert request fails, only that host is affected; import continues for all others
+
+---
+
+## [0.3.6] - 2026-06-10
+
+### Fixed
+
+- "Request SSL" checkbox now works correctly:
+  - Re-added certificates endpoint to export; now fetches cert provider metadata only (not cert files)
+  - cert_provider_map now populated correctly
+  - needs_ssl_request becomes True when cert was Let's Encrypt and "Request SSL" is enabled
+  - LE cert requests now queued and processed correctly with domain_names from proxy host
+  - Provider-specific warnings now show correct provider (not `None`)
+- Log responses no longer return empty/blank results intermittently:
+  - Reduced gunicorn workers from 2 to 1; each worker had its own `_log_lines` deque in memory
+  - Frontend polling round-robined across workers, hitting empty deque ~50% of the time
+  - Single worker + 4 threads provides sufficient concurrency; all state is in-process memory anyway
+- Log display no longer flickers or constantly scrolls to bottom:
+  - Changed from full `textContent` replacement to incremental line appending (eliminates DOM thrashing)
+  - Auto-scroll now respects user intent: disabled when user scrolls up, re-enabled when scrolled to bottom
+  - Removed overly-sensitive 10px scroll threshold, replaced with 30px for more stable detection
+- Import no longer crashes with "name 'cert_id_map' is not defined" — removed leftover variable reference
+
+---
+
+## [0.3.3] - 2026-06-10
+
+### Fixed
+
+- **Certificate export/import removed** — the previous implementation relied on accessing LE cert files
+  from the local filesystem, which doesn't work in containerized deployments where the export container
+  has no access to the remote NPM server's `/etc/letsencrypt/` directory. NPM has no API endpoint to
+  retrieve cert file contents. Now on import, users can enable "Request SSL" to obtain new Let's Encrypt
+  certificates for proxy hosts, or configure SSL manually in NPM. Custom certificates must be
+  re-uploaded manually.
+
+---
+
+## [0.3.2] - 2026-06-10
+
+### Fixed
+
+- Port configuration now reads from config.json instead of hardcoded value,
+  ensuring gunicorn binds to the correct ingress port (8101 for dev)
+
+---
+
+## [0.3.1] - 2026-06-09
+
+### Added
+
+- **Dynamic app name** — page title and heading now read from `config.json` "name" field,
+  allowing beta and dev variants to display their channel designation (e.g. "NPM Export Import (dev)")
+
+### Fixed
+
+- **Graceful shutdown** — switched from Flask dev server to gunicorn (production WSGI)
+  to properly handle SIGTERM signals. App now shows "Stopped" instead of "Error"
+  when Home Assistant stops it
+
+---
+
 ## [0.3.0] - 2026-06-09
 
 ### Changed

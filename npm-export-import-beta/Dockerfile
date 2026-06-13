@@ -9,7 +9,7 @@ RUN apk add --no-cache bash
 SHELL ["/bin/bash", "-c"]
 
 RUN apk add --no-cache gcc musl-dev libffi-dev && \
-    pip install --no-cache-dir requests flask cryptography
+    pip install --no-cache-dir requests flask cryptography gunicorn
 
 COPY run.sh /run.sh
 COPY npm_export_import.py /app/npm_export_import.py
