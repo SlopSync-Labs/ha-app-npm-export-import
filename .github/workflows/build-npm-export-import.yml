@@ -1,0 +1,123 @@
+name: Build & Publish NPM Export Import
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "npm-export-import/**"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ha_arch: amd64
+            platform: linux/amd64
+          - ha_arch: aarch64
+            platform: linux/arm64
+          - ha_arch: armv7
+            platform: linux/arm/v7
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read add-on version
+        id: version
+        run: |
+          echo "version=$(jq -r '.version' npm-export-import/config.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.ha_arch }}
+        uses: docker/build-push-action@v6
+        with:
+          context: npm-export-import
+          file: npm-export-import/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ghcr.io/slopsync-labs/ha-app-npm-export-import/${{ matrix.ha_arch }}-addon-npm-export-import:${{ steps.version.outputs.version }}
+            ghcr.io/slopsync-labs/ha-app-npm-export-import/${{ matrix.ha_arch }}-addon-npm-export-import:latest
+          build-args: |
+            BUILD_VERSION=${{ steps.version.outputs.version }}
+            BUILD_ARCH=${{ matrix.ha_arch }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read add-on version
+        id: version
+        run: |
+          echo "version=$(jq -r '.version' npm-export-import/config.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Check if release tag exists
+        id: check_tag
+        run: |
+          tag="npm-export-import-v${{ steps.version.outputs.version }}"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $tag already exists — skipping release creation"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract changelog section
+        if: steps.check_tag.outputs.exists == 'false'
+        id: changelog
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          # Extract from "## [$version]" to the next "## [" or "---"
+          awk -v v="$version" '
+            /^## \['"$version"'\]/ { found=1; next }
+            found && /^(## \[|---)/ { exit }
+            found { print }
+          ' npm-export-import/CHANGELOG.md | sed -e '1{/^$/d;}' -e '${/^$/d;}' > /tmp/changelog.txt
+
+          # Add reference to upstream repository
+          echo "" >> /tmp/changelog.txt
+          echo "[View the GitHub repository](https://github.com/SlopSync-Labs/ha-app-npm-export-import)" >> /tmp/changelog.txt
+
+          # Store as multiline output
+          {
+            echo 'body<<CHANGELOG_EOF'
+            cat /tmp/changelog.txt
+            echo 'CHANGELOG_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: npm-export-import-v${{ steps.version.outputs.version }}
+          name: NPM Export Import v${{ steps.version.outputs.version }}
+          body: ${{ steps.changelog.outputs.body }}
+          draft: false
+          prerelease: false
