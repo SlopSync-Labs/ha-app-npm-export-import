@@ -1,0 +1,30 @@
+name: Label Team-Reported Issues
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  label-team-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label if reported by team
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const authorAssociation = issue.author_association;
+
+            // Label if author is owner, member, or collaborator
+            if (['OWNER', 'MEMBER', 'COLLABORATOR'].includes(authorAssociation)) {
+              github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['team']
+              });
+              console.log(`Added 'team' label to issue #${issue.number} (author_association: ${authorAssociation})`);
+            }
