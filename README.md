@@ -19,3 +19,7 @@ Three variants will be available:
 ## Documentation
 
 For full app documentation, see [npm-export-import/README.md](npm-export-import/README.md).
+
+## Star History
+
+![Star History Chart](star-history.png)
